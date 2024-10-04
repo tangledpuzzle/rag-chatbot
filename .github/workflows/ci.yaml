@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "main"
+    paths:
+      - "chatbot/**"
+      - "tests/**"
+      - ".github/workflows/**"
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    paths:
+      - "chatbot/**"
+      - "tests/**"
+      - ".github/workflows/**"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+
+      - name: Get poetry version
+        id: poetry-version
+        run: echo "poetry-version=$(cat version/poetry)" >> "$GITHUB_OUTPUT"
+
+      - name: Install poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: ${{ steps.poetry-version.outputs.poetry-version }}
+          virtualenvs-in-project: true
+
+      - name: Get llama-cpp version
+        id: llama-cpp-version
+        run: echo "llama-cpp-version=$(cat version/llama_cpp)" >> "$GITHUB_OUTPUT"
+
+      # Installing dependencies and llama-cpp-python without NVIDIA CUDA acceleration.
+      - name: Setup environment
+        run: |
+          poetry lock --check
+          poetry install --no-root --no-ansi
+          . .venv/bin/activate && pip3 install llama-cpp-python==${{ steps.llama-cpp-version.outputs.llama-cpp-version }}
+
+      - name: Run tests
+        run: |
+          poetry run python -m pytest --durations=5 --log-cli-level=DEBUG --capture=tee-sys -v
